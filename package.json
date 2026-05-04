@@ -7,7 +7,7 @@
     "agentic-tui": "./dist/src/cli.js"
   },
   "files": [
-    "dist/",
+    "dist/src/",
     "skills/",
     "README.md",
     "LICENSE"
