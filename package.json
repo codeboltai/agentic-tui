@@ -1,10 +1,10 @@
 {
   "name": "@codebolt/agentic-tui",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "CLI for AI agents to run, inspect, and control terminal/TUI applications.",
   "type": "module",
   "bin": {
-    "agentic-tui": "./dist/src/cli.js"
+    "agentic-tui": "dist/src/cli.js"
   },
   "files": [
     "dist/src/",
@@ -22,6 +22,7 @@
     "start": "node dist/src/cli.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "@xterm/headless": "^6.0.0",
     "node-pty": "^1.0.0"
   },

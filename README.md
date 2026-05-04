@@ -12,7 +12,7 @@ There is no MCP server and no web UI. The interface is intentionally CLI-first s
 - Testing full-screen TUI applications such as `htop`, `top`, `vim`, `nano`, `lazygit`, or terminal menus.
 - Capturing text-grid screenshots of what a human would see in the terminal.
 - Sending repeatable keyboard input to drive interactive flows.
-- Giving AI agents structured JSON output that can be used for observation/action loops.
+- Giving AI agents either simple text output or structured JSON when metadata is useful.
 
 ## How It Works
 
@@ -27,6 +27,7 @@ Terminal sessions are powered by:
 
 - `node-pty`: spawns and controls real pseudo-terminal sessions.
 - `@xterm/headless`: renders ANSI output into a terminal buffer for `screen`, `region`, `cursor`, and `search`.
+- `@napi-rs/canvas`: renders text-grid screenshots to PNG using cross-platform native prebuilds.
 
 ## Install
 
@@ -76,9 +77,11 @@ agentic-tui run htop
 # Capture what is visible.
 agentic-tui screen
 agentic-tui screenshot
+agentic-tui screenshot --out screen.png --format png
 
 # Read raw command output since the last read.
 agentic-tui output --mode streaming
+agentic-tui output --mode screen --out screen.json --format json
 
 # Send input.
 agentic-tui type "hello world"
@@ -94,20 +97,19 @@ agentic-tui kill
 agentic-tui daemon stop
 ```
 
-For agents, prefer JSON:
+Use JSON when you need structured metadata:
 
 ```bash
-agentic-tui run npm install --json
 agentic-tui screen --json
-agentic-tui press Enter --json
-agentic-tui wait "Done" --json
+agentic-tui search "Continue" --json
+agentic-tui sessions list --json
 ```
 
 ## Core Agent Loop
 
 1. Start the daemon with the shell you want.
 2. Run the target app or command.
-3. Observe with `screen --json`, `output --mode streaming --json`, or `search --json`.
+3. Observe with `screen`, `output --mode streaming`, or `search`.
 4. Act with `type`, `press`, `scroll`, or `resize`.
 5. Synchronize with `wait`, usually `wait --stable` after actions that redraw the UI.
 6. Repeat observe/act until the task is complete.
@@ -125,7 +127,7 @@ agentic-tui --session <session-id> press Enter
 
 | Option | Description |
 | --- | --- |
-| `--json` | Print structured JSON instead of human-readable text. |
+| `--json` | Print structured JSON instead of human-readable text when you need machine-readable metadata. |
 | `-s, --session <id>` | Target a specific session. Defaults to the active session. |
 
 JSON success shape:
@@ -177,6 +179,8 @@ Useful flags for `output`:
 | `--wait-for-idle <ms>` | Wait until output has been quiet for this many milliseconds before reading. |
 | `--trim` | Trim trailing whitespace in screen mode. |
 | `--include-empty` | Preserve trailing empty rows in screen mode. |
+| `--out <path>` | Save output to a file instead of printing the raw content. |
+| `--format text\|json\|png` | File/stdout format. PNG requires `--out`. |
 
 ## Commands
 
@@ -210,7 +214,7 @@ Examples:
 agentic-tui daemon start --shell powershell.exe
 agentic-tui daemon start --shell pwsh
 agentic-tui daemon start --shell bash
-agentic-tui daemon status --json
+agentic-tui daemon status
 agentic-tui daemon stop
 ```
 
@@ -266,10 +270,17 @@ Capture the current rendered terminal screen.
 ```bash
 agentic-tui screen
 agentic-tui screenshot
-agentic-tui screen --json
+agentic-tui screen
+agentic-tui screenshot --out screen.txt --format text
+agentic-tui screenshot --out screen.json --format json
+agentic-tui screenshot --out screen.png --format png
 ```
 
 `screenshot` is an alias for `screen`. The screenshot is a text grid, not an image file.
+
+When `--format png` is used, `agentic-tui` renders the current text grid into a PNG image. This is meant for human review, reports, docs, and debugging. Agents should usually inspect text output first and request JSON when they need metadata.
+
+PNG rendering uses `@napi-rs/canvas`, which provides native prebuilds for the main Windows, macOS, and Linux platforms.
 
 JSON result includes:
 
@@ -420,7 +431,7 @@ Examples:
 
 ```bash
 agentic-tui search "Continue"
-agentic-tui search "error|failed" --regex --json
+agentic-tui search "error|failed" --regex
 ```
 
 JSON result:
@@ -458,7 +469,7 @@ Examples:
 
 ```bash
 agentic-tui region --row 0 --col 0 --rows 5 --cols 120
-agentic-tui region --row 6 --col 0 --rows 20 --cols 80 --trim --json
+agentic-tui region --row 6 --col 0 --rows 20 --cols 80 --trim
 ```
 
 ### `cursor`
@@ -467,7 +478,7 @@ Return cursor position and current cursor line.
 
 ```bash
 agentic-tui cursor
-agentic-tui cursor --json
+agentic-tui cursor --json  # use when row/col metadata matters
 ```
 
 Use this for prompts, editors, and forms where cursor location matters.
@@ -518,8 +529,9 @@ Default state directory:
 
 ```bash
 agentic-tui daemon start --shell powershell.exe
-agentic-tui run npm test --json
-agentic-tui output --mode streaming --wait-for-idle 1000 --json
+agentic-tui run npm test
+agentic-tui output --mode streaming --wait-for-idle 1000
+agentic-tui output --mode streaming --out test-output.txt
 ```
 
 Use `streaming` because normal commands produce sequential output.
@@ -527,12 +539,12 @@ Use `streaming` because normal commands produce sequential output.
 ### Interactive Prompt
 
 ```bash
-agentic-tui run npm init --json
-agentic-tui screen --json
+agentic-tui run npm init
+agentic-tui screen
 agentic-tui type "my-package"
 agentic-tui press Enter
-agentic-tui wait --stable --json
-agentic-tui screen --json
+agentic-tui wait --stable
+agentic-tui screen
 ```
 
 Always re-read the screen after each input.
@@ -540,23 +552,33 @@ Always re-read the screen after each input.
 ### Full TUI App
 
 ```bash
-agentic-tui run htop --cols 120 --rows 40 --json
-agentic-tui wait --stable --timeout 3000 --json
-agentic-tui screen --json
-agentic-tui search "CPU" --json
+agentic-tui run htop --cols 120 --rows 40
+agentic-tui wait --stable --timeout 3000
+agentic-tui screen
+agentic-tui search "CPU"
 agentic-tui press F10
 agentic-tui kill
 ```
 
 Use `screen`, `search`, and `region` rather than raw `streaming` output for full-screen apps.
 
+### Saving Screenshots
+
+```bash
+agentic-tui screen --out current-screen.txt
+agentic-tui screen --out current-screen.json --format json
+agentic-tui screen --out current-screen.png --format png
+```
+
+Use text for quick agent reasoning, JSON when metadata matters, and PNG when a human needs to inspect or archive the visual state.
+
 ### Menu Navigation
 
 ```bash
-agentic-tui screen --json
+agentic-tui screen
 agentic-tui press ArrowDown
-agentic-tui wait --stable --json
-agentic-tui screen --json
+agentic-tui wait --stable
+agentic-tui screen
 agentic-tui press Enter
 ```
 
@@ -605,7 +627,7 @@ Use:
 ```bash
 agentic-tui wait --stable
 agentic-tui output --mode snapshot
-agentic-tui screen --json
+agentic-tui screen
 ```
 
 ### Need reproducible screenshots
@@ -615,7 +637,7 @@ Resize before running or before capture:
 ```bash
 agentic-tui run htop --cols 120 --rows 40
 agentic-tui resize --cols 120 --rows 40
-agentic-tui screen --json
+agentic-tui screen
 ```
 
 ## Development

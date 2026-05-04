@@ -21,7 +21,8 @@ Drive terminal applications through an observe/act loop:
 
 ## Setup
 
-- Prefer JSON for agent workflows: add `--json`.
+- Plain text output is fine for most observe/act loops.
+- Add `--json` when you need structured metadata such as session ids, cursor coordinates, match rows/cols, or saved file details.
 - Start the daemon explicitly when shell selection matters:
   - Windows PowerShell: `agentic-tui daemon start --shell powershell.exe`
   - PowerShell Core: `agentic-tui daemon start --shell pwsh`
@@ -32,13 +33,13 @@ Drive terminal applications through an observe/act loop:
 ## Core Workflow
 
 ```bash
-agentic-tui daemon start --shell powershell.exe --json
-agentic-tui run <command> [...args] --json
-agentic-tui screen --json
-agentic-tui press Enter --json
-agentic-tui wait --stable --json
-agentic-tui screen --json
-agentic-tui kill --json
+agentic-tui daemon start --shell powershell.exe
+agentic-tui run <command> [...args]
+agentic-tui screen
+agentic-tui press Enter
+agentic-tui wait --stable
+agentic-tui screen
+agentic-tui kill
 ```
 
 Rules:
@@ -50,13 +51,13 @@ Rules:
 
 ## Choosing The Read Mode
 
-- Regular commands: `agentic-tui output --mode streaming --json`
+- Regular commands: `agentic-tui output --mode streaming`
   - Use for `npm`, `git`, `ls`, compilers, tests, and commands that print sequential logs.
   - Streaming output clears after read.
-- Live-updating commands: `agentic-tui output --mode snapshot --json`
+- Live-updating commands: `agentic-tui output --mode snapshot`
   - Use for raw recent output from progress or monitor-style commands.
   - Snapshot output does not clear.
-- TUI apps and prompts: `agentic-tui screen --json`
+- TUI apps and prompts: `agentic-tui screen`
   - Use for menus, editors, forms, full-screen apps, alternate-screen apps, and visual prompts.
   - This returns the rendered text grid.
 
@@ -65,59 +66,68 @@ Rules:
 Run:
 
 ```bash
-agentic-tui run npm install --json
-agentic-tui run htop --cols 120 --rows 40 --json
-agentic-tui run --cwd <dir> <command> [...args] --json
+agentic-tui run npm install
+agentic-tui run htop --cols 120 --rows 40
+agentic-tui run --cwd <dir> <command> [...args]
 ```
 
 Type and submit:
 
 ```bash
-agentic-tui type "hello world" --json
-agentic-tui press Enter --json
+agentic-tui type "hello world"
+agentic-tui press Enter
 ```
 
 Navigate:
 
 ```bash
-agentic-tui press ArrowDown ArrowDown Enter --json
-agentic-tui scroll down 5 --json
-agentic-tui press Tab --json
-agentic-tui press Escape --json
-agentic-tui press Ctrl+C --json
+agentic-tui press ArrowDown ArrowDown Enter
+agentic-tui scroll down 5
+agentic-tui press Tab
+agentic-tui press Escape
+agentic-tui press Ctrl+C
 ```
 
 Resize:
 
 ```bash
-agentic-tui resize --cols 120 --rows 40 --json
+agentic-tui resize --cols 120 --rows 40
 ```
 
 Wait:
 
 ```bash
-agentic-tui wait "Done" --timeout 30000 --json
-agentic-tui wait "Loading" --gone --timeout 60000 --json
-agentic-tui wait --stable --timeout 5000 --json
+agentic-tui wait "Done" --timeout 30000
+agentic-tui wait "Loading" --gone --timeout 60000
+agentic-tui wait --stable --timeout 5000
 ```
 
 Inspect:
 
 ```bash
-agentic-tui search "Continue" --json
-agentic-tui search "error|failed" --regex --json
-agentic-tui region --row 5 --col 0 --rows 10 --cols 80 --trim --json
-agentic-tui cursor --json
+agentic-tui search "Continue"
+agentic-tui search "error|failed" --regex
+agentic-tui region --row 5 --col 0 --rows 10 --cols 80 --trim
+agentic-tui cursor
+```
+
+Save screenshots:
+
+```bash
+agentic-tui screen --out screen.txt --format text
+agentic-tui screen --out screen.json --format json
+agentic-tui screen --out screen.png --format png
 ```
 
 ## Reliability Rules
 
-- Do not rely on old screenshots after input. Always call `screen --json` again.
+- Do not rely on old screenshots after input. Always call `screen` again.
 - Do not use `streaming` to inspect full-screen TUIs; use `screen`.
 - Use `search` before complex coordinate assumptions.
 - Use `region` for tables, menus, status bars, and focused extraction.
+- Use `--out` to save evidence or reports. Prefer text for quick inspection, JSON for metadata, and PNG for human visual review.
 - Resize early to make layouts deterministic.
-- If a wait times out, capture `screen --json` before deciding the next action.
+- If a wait times out, capture `screen` before deciding the next action.
 - For short-lived commands, it is still valid to read `output` or `screen` after the process exits.
 
 ## Session Handling
@@ -125,66 +135,66 @@ agentic-tui cursor --json
 List sessions:
 
 ```bash
-agentic-tui sessions list --json
+agentic-tui sessions list
 ```
 
 Use a specific session:
 
 ```bash
-agentic-tui --session <id> screen --json
-agentic-tui --session <id> press Enter --json
+agentic-tui --session <id> screen
+agentic-tui --session <id> press Enter
 ```
 
 Switch active session:
 
 ```bash
-agentic-tui sessions switch <id> --json
+agentic-tui sessions switch <id>
 ```
 
 Clean up:
 
 ```bash
-agentic-tui kill --json
-agentic-tui sessions cleanup --all --json
-agentic-tui daemon stop --json
+agentic-tui kill
+agentic-tui sessions cleanup --all
+agentic-tui daemon stop
 ```
 
 ## Error Recovery
 
 - `DAEMON_NOT_RUNNING`: run `agentic-tui daemon start --shell <shell>`.
-- `NO_SESSION`: run a command or inspect `agentic-tui sessions list --json`.
+- `NO_SESSION`: run a command or inspect `agentic-tui sessions list`.
 - `SESSION_EXITED`: inspect with `output`, `screen`, `search`, or `region`; start a new session if more input is required.
 - `INVALID_KEY`: use supported names like `Enter`, `Tab`, `Escape`, arrows, `F1`-`F12`, `Ctrl+C`.
-- Timeout from `wait`: capture `screen --json`, then decide whether to wait longer, search for alternate text, or send a corrective key.
+- Timeout from `wait`: capture `screen`, then decide whether to wait longer, search for alternate text, or send a corrective key.
 
 ## Minimal Examples
 
 Interactive prompt:
 
 ```bash
-agentic-tui run npm init --json
-agentic-tui wait --stable --json
-agentic-tui screen --json
-agentic-tui type "my-package" --json
-agentic-tui press Enter --json
-agentic-tui wait --stable --json
-agentic-tui screen --json
+agentic-tui run npm init
+agentic-tui wait --stable
+agentic-tui screen
+agentic-tui type "my-package"
+agentic-tui press Enter
+agentic-tui wait --stable
+agentic-tui screen
 ```
 
 Full-screen TUI:
 
 ```bash
-agentic-tui run htop --cols 120 --rows 40 --json
-agentic-tui wait --stable --timeout 3000 --json
-agentic-tui screen --json
-agentic-tui search "CPU" --json
-agentic-tui press F10 --json
-agentic-tui kill --json
+agentic-tui run htop --cols 120 --rows 40
+agentic-tui wait --stable --timeout 3000
+agentic-tui screen
+agentic-tui search "CPU"
+agentic-tui press F10
+agentic-tui kill
 ```
 
 Regular command:
 
 ```bash
-agentic-tui run npm test --json
-agentic-tui output --mode streaming --wait-for-idle 1000 --json
+agentic-tui run npm test
+agentic-tui output --mode streaming --wait-for-idle 1000
 ```

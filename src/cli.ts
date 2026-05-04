@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { daemonShutdown, daemonStatus, rpc } from './rpc-client.js';
 import { startRpcServer } from './rpc-server.js';
@@ -9,6 +10,7 @@ import { readDaemonState, removeDaemonState } from './daemon-state.js';
 import { errorCode, errorMessage } from './errors.js';
 import { directionToKey, keysToSequence, keyToSequence } from './keys.js';
 import { DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_WAIT_TIMEOUT_MS, daemonStatePath } from './config.js';
+import { renderTextGridToPng } from './png-renderer.js';
 
 interface CliContext {
   json: boolean;
@@ -19,6 +21,8 @@ interface Parsed {
   ctx: CliContext;
   args: string[];
 }
+
+type SaveFormat = 'text' | 'json' | 'png';
 
 main().catch((error) => {
   const json = process.argv.includes('--json');
@@ -53,7 +57,7 @@ async function main(): Promise<void> {
       return;
     case 'screen':
     case 'screenshot':
-      await printResult(parsed.ctx, await rpc('output', { sessionId: parsed.ctx.sessionId, mode: 'screen' }), formatOutput);
+      await handleScreen(parsed.ctx, args);
       return;
     case 'press':
       await handlePress(parsed.ctx, args);
@@ -172,7 +176,7 @@ async function handleRun(ctx: CliContext, args: string[]): Promise<void> {
 }
 
 async function handleOutput(ctx: CliContext, args: string[]): Promise<void> {
-  const parsed = parseOptions(args, { string: ['mode', 'wait-for-idle'], bool: ['trim', 'include-empty'] });
+  const parsed = parseOptions(args, { string: ['mode', 'wait-for-idle', 'out', 'format'], bool: ['trim', 'include-empty'] });
   const result = await rpc('output', {
     sessionId: ctx.sessionId,
     mode: parsed.options.mode,
@@ -180,7 +184,25 @@ async function handleOutput(ctx: CliContext, args: string[]): Promise<void> {
     trimWhitespace: parsed.options.trim,
     includeEmpty: parsed.options['include-empty'],
   });
-  printResult(ctx, result, formatOutput);
+  await emitOutputResult(ctx, result, {
+    out: optionalStringOption(parsed.options.out),
+    format: parseSaveFormat(parsed.options.format),
+  });
+}
+
+async function handleScreen(ctx: CliContext, args: string[]): Promise<void> {
+  const parsed = parseOptions(args, { string: ['out', 'format', 'wait-for-idle'], bool: ['trim', 'include-empty'] });
+  const result = await rpc('output', {
+    sessionId: ctx.sessionId,
+    mode: 'screen',
+    waitForIdle: numberOption(parsed.options['wait-for-idle']),
+    trimWhitespace: parsed.options.trim,
+    includeEmpty: parsed.options['include-empty'],
+  });
+  await emitOutputResult(ctx, result, {
+    out: optionalStringOption(parsed.options.out),
+    format: parseSaveFormat(parsed.options.format),
+  });
 }
 
 async function handlePress(ctx: CliContext, args: string[]): Promise<void> {
@@ -382,6 +404,53 @@ function parseOptions(args: string[], spec: { string?: string[]; bool?: string[]
   return { options, positionals };
 }
 
+async function emitOutputResult(ctx: CliContext, value: unknown, options: { out?: string; format?: SaveFormat }): Promise<void> {
+  const format = options.format ?? (ctx.json ? 'json' : 'text');
+  if (options.out) {
+    await saveOutputFile(options.out, format, value);
+    if (ctx.json) {
+      console.log(JSON.stringify({ ok: true, result: { path: options.out, format } }, null, 2));
+    } else {
+      console.log(`Saved ${format} screenshot to ${options.out}`);
+    }
+    return;
+  }
+
+  if (format === 'json') {
+    console.log(JSON.stringify({ ok: true, result: value }, null, 2));
+  } else if (format === 'png') {
+    throw new Error('--format png requires --out <path>');
+  } else {
+    console.log(formatOutput(value));
+  }
+}
+
+async function saveOutputFile(filePath: string, format: SaveFormat, value: unknown): Promise<void> {
+  await fs.promises.mkdir(path.dirname(path.resolve(filePath)), { recursive: true });
+  if (format === 'json') {
+    await fs.promises.writeFile(filePath, JSON.stringify({ ok: true, result: value }, null, 2), 'utf8');
+    return;
+  }
+  const output = formatOutput(value);
+  if (format === 'png') {
+    await fs.promises.writeFile(filePath, renderTextGridToPng(output));
+    return;
+  }
+  await fs.promises.writeFile(filePath, output, 'utf8');
+}
+
+function parseSaveFormat(value: unknown): SaveFormat | undefined {
+  if (value === undefined) return undefined;
+  if (value !== 'text' && value !== 'json' && value !== 'png') {
+    throw new Error('--format must be one of: text, json, png');
+  }
+  return value;
+}
+
+function optionalStringOption(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
 function numberOption(value: unknown, fallback?: number): number | undefined {
   if (typeof value !== 'string') return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -431,15 +500,16 @@ function formatSessions(value: unknown): string {
 }
 
 function printHelp(): void {
-  const bin = path.basename(process.argv[1] ?? 'agentic-tui');
+  const invoked = path.basename(process.argv[1] ?? 'agentic-tui');
+  const bin = invoked === 'cli.js' ? 'agentic-tui' : invoked;
   console.log(`agentic-tui
 
 Usage:
   ${bin} daemon start|run [--shell SHELL]|status|stop|restart
   ${bin} run <command> [...args] [--cwd DIR] [--cols N] [--rows N] [--env KEY=VALUE]
   ${bin} output --mode streaming|snapshot|screen
-  ${bin} screen
-  ${bin} screenshot
+  ${bin} screen [--out PATH] [--format text|json|png]
+  ${bin} screenshot [--out PATH] [--format text|json|png]
   ${bin} press <key...>
   ${bin} type <text>
   ${bin} scroll up|down|left|right [amount]
