@@ -1,0 +1,33 @@
+{
+  "name": "agentic-tui",
+  "version": "0.1.0",
+  "description": "CLI for AI agents to run, inspect, and control terminal/TUI applications.",
+  "type": "module",
+  "bin": {
+    "agentic-tui": "./dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/tests/all.test.js",
+    "start": "node dist/src/cli.js"
+  },
+  "dependencies": {
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "tui",
+    "cli",
+    "pty",
+    "terminal",
+    "automation"
+  ],
+  "license": "MIT"
+}
