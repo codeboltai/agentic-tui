@@ -1,14 +1,24 @@
 {
-  "name": "agentic-tui",
+  "name": "@codebolt/agentic-tui",
   "version": "0.1.0",
   "description": "CLI for AI agents to run, inspect, and control terminal/TUI applications.",
   "type": "module",
   "bin": {
     "agentic-tui": "./dist/src/cli.js"
   },
+  "files": [
+    "dist/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test dist/tests/all.test.js",
+    "prepack": "npm run build",
     "start": "node dist/src/cli.js"
   },
   "dependencies": {

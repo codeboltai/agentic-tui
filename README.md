@@ -30,6 +30,15 @@ Terminal sessions are powered by:
 
 ## Install
 
+Global install:
+
+```bash
+npm i -g @codebolt/agentic-tui
+agentic-tui --help
+```
+
+Local development:
+
 ```bash
 npm install
 npm run build
@@ -41,7 +50,7 @@ Run locally from the project:
 node dist/src/cli.js --help
 ```
 
-After global installation or linking:
+After global installation, the package name is scoped but the executable is still:
 
 ```bash
 agentic-tui --help
