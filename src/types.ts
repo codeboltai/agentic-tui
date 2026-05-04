@@ -24,6 +24,10 @@ export interface SessionSummary {
   createdAt: string;
   idleSeconds: number;
   isAlternateBuffer: boolean;
+  mouse?: {
+    trackingEnabled: boolean;
+    protocol: string;
+  };
 }
 
 export interface RpcRequest {

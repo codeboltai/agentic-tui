@@ -95,6 +95,15 @@ async function dispatch(manager: SessionManager, rpc: RpcRequest): Promise<unkno
       });
     case 'write':
       return manager.write(optionalString(params, 'sessionId'), stringParam(params, 'data'));
+    case 'wheel':
+      return manager.wheel({
+        sessionId: optionalString(params, 'sessionId'),
+        direction: stringParam(params, 'direction'),
+        amount: optionalNumber(params, 'amount'),
+        row: optionalNumber(params, 'row'),
+        col: optionalNumber(params, 'col'),
+        protocol: optionalString(params, 'protocol') as never,
+      });
     case 'resize':
       return manager.resize(optionalString(params, 'sessionId'), numberParam(params, 'cols'), numberParam(params, 'rows'));
     case 'region':

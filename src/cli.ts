@@ -11,6 +11,7 @@ import { errorCode, errorMessage } from './errors.js';
 import { directionToKey, keysToSequence, keyToSequence } from './keys.js';
 import { DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_WAIT_TIMEOUT_MS, daemonStatePath } from './config.js';
 import { renderTextGridToPng } from './png-renderer.js';
+import type { MouseProtocol } from './mouse.js';
 
 interface CliContext {
   json: boolean;
@@ -67,6 +68,9 @@ async function main(): Promise<void> {
       return;
     case 'scroll':
       await handleScroll(parsed.ctx, args);
+      return;
+    case 'wheel':
+      await handleWheel(parsed.ctx, args);
       return;
     case 'resize':
       await handleResize(parsed.ctx, args);
@@ -220,13 +224,47 @@ async function handleType(ctx: CliContext, args: string[]): Promise<void> {
 }
 
 async function handleScroll(ctx: CliContext, args: string[]): Promise<void> {
-  const [direction, amountText = '1'] = args;
+  const parsed = parseOptions(args, { string: ['row', 'col', 'protocol'], bool: ['keys', 'mouse'] });
+  const [direction, amountText = '1'] = parsed.positionals;
   if (!direction) throw new Error('scroll requires a direction');
   const amount = Math.max(1, Number.parseInt(amountText, 10) || 1);
+  if (!parsed.options.keys) return sendWheel(ctx, {
+    direction,
+    amount,
+    row: numberOption(parsed.options.row),
+    col: numberOption(parsed.options.col),
+    protocol: parseMouseProtocol(parsed.options.protocol),
+  });
+
   const key = directionToKey(direction);
   const data = keyToSequence(key).repeat(amount);
   const result = await rpc('write', { sessionId: ctx.sessionId, data });
   printResult(ctx, result, () => `Scrolled ${direction} ${amount}`);
+}
+
+async function handleWheel(ctx: CliContext, args: string[]): Promise<void> {
+  const parsed = parseOptions(args, { string: ['row', 'col', 'protocol'] });
+  const [direction, amountText = '1'] = parsed.positionals;
+  if (!direction) throw new Error('wheel requires a direction');
+  await sendWheel(ctx, {
+    direction,
+    amount: Math.max(1, Number.parseInt(amountText, 10) || 1),
+    row: numberOption(parsed.options.row),
+    col: numberOption(parsed.options.col),
+    protocol: parseMouseProtocol(parsed.options.protocol),
+  });
+}
+
+async function sendWheel(
+  ctx: CliContext,
+  params: { direction: string; amount: number; row?: number; col?: number; protocol?: MouseProtocol },
+): Promise<void> {
+  const result = await rpc('wheel', { sessionId: ctx.sessionId, ...params });
+  printResult(ctx, result, (value) => {
+    const wheel = value as { protocol: string; amount: number; row: number; col: number; trackingEnabled: boolean };
+    const tracking = wheel.trackingEnabled ? 'mouse tracking enabled' : 'mouse tracking not detected';
+    return `Wheel ${params.direction} ${wheel.amount} at ${wheel.row}:${wheel.col} (${wheel.protocol}, ${tracking})`;
+  });
 }
 
 async function handleResize(ctx: CliContext, args: string[]): Promise<void> {
@@ -447,6 +485,14 @@ function parseSaveFormat(value: unknown): SaveFormat | undefined {
   return value;
 }
 
+function parseMouseProtocol(value: unknown): MouseProtocol | undefined {
+  if (value === undefined) return undefined;
+  if (value !== 'auto' && value !== 'sgr' && value !== 'normal' && value !== 'urxvt') {
+    throw new Error('--protocol must be one of: auto, sgr, normal, urxvt');
+  }
+  return value;
+}
+
 function optionalStringOption(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
@@ -512,7 +558,8 @@ Usage:
   ${bin} screenshot [--out PATH] [--format text|json|png]
   ${bin} press <key...>
   ${bin} type <text>
-  ${bin} scroll up|down|left|right [amount]
+  ${bin} scroll up|down|left|right [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt] [--keys]
+  ${bin} wheel up|down|left|right [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
   ${bin} resize --cols N --rows N
   ${bin} wait <text> [--gone] [--timeout MS]
   ${bin} wait --stable [--timeout MS]

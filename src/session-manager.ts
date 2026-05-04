@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_IDLE_TIMEOUT_MS, SNAPSHOT_TAIL_BYTES, STREAM_TAIL_BYTES, clampSize, sessionsPath } from './config.js';
 import { AgenticTuiError } from './errors.js';
+import { createMouseState, encodeMouseWheel, updateMouseStateFromOutput } from './mouse.js';
+import type { MouseProtocol, MouseState } from './mouse.js';
 import { cursorInfo, awaitWrite, readRegion, readScreen, searchScreen } from './screen.js';
 import type { OutputMode, SessionSummary } from './types.js';
 
@@ -19,6 +21,7 @@ interface Session {
   ptyProcess: pty.IPty;
   terminal: XTermTerminal;
   outputBuffer: string;
+  mouse: MouseState;
   totalBytesReceived: number;
   lastWritePromise: Promise<void>;
   lastDataTime: number;
@@ -65,6 +68,7 @@ export class SessionManager {
         rows: size.rows,
         cwd,
         env: { ...process.env, ...(params.env ?? {}) },
+        ...windowsPtyOptions(),
       });
     } catch (error) {
       throw new AgenticTuiError('SPAWN_FAILED', `Failed to run ${params.command}: ${error instanceof Error ? error.message : String(error)}`);
@@ -80,6 +84,7 @@ export class SessionManager {
       ptyProcess,
       terminal,
       outputBuffer: '',
+      mouse: createMouseState(),
       totalBytesReceived: 0,
       lastWritePromise: Promise.resolve(),
       lastDataTime: now,
@@ -91,6 +96,7 @@ export class SessionManager {
       session.lastDataTime = Date.now();
       session.lastActivityTime = session.lastDataTime;
       session.totalBytesReceived += data.length;
+      updateMouseStateFromOutput(session.mouse, data);
       session.outputBuffer = trimTail(session.outputBuffer + data, STREAM_TAIL_BYTES);
       session.lastWritePromise = awaitWrite(session.terminal, data);
     });
@@ -152,6 +158,37 @@ export class SessionManager {
     session.lastActivityTime = Date.now();
     session.ptyProcess.write(data);
     return { success: true };
+  }
+
+  wheel(params: {
+    sessionId?: string;
+    direction: string;
+    amount?: number;
+    row?: number;
+    col?: number;
+    protocol?: MouseProtocol;
+  }): { success: true; protocol: string; amount: number; row: number; col: number; trackingEnabled: boolean } {
+    const session = this.resolve(params.sessionId);
+    const encoded = encodeMouseWheel({
+      direction: params.direction,
+      amount: params.amount,
+      row: params.row,
+      col: params.col,
+      rows: session.terminal.rows,
+      cols: session.terminal.cols,
+      protocol: params.protocol,
+      state: session.mouse,
+    });
+    session.lastActivityTime = Date.now();
+    session.ptyProcess.write(Buffer.from(encoded.data, 'utf8'));
+    return {
+      success: true,
+      protocol: encoded.protocol,
+      amount: encoded.amount,
+      row: encoded.row,
+      col: encoded.col,
+      trackingEnabled: encoded.trackingEnabled,
+    };
   }
 
   async resize(sessionId: string | undefined, cols: number, rows: number): Promise<{ sessionId: string; cols: number; rows: number }> {
@@ -249,6 +286,10 @@ export class SessionManager {
         createdAt: session.createdAt,
         idleSeconds: Math.floor((now - session.lastActivityTime) / 1000),
         isAlternateBuffer: session.terminal.buffer.active === session.terminal.buffer.alternate,
+        mouse: {
+          trackingEnabled: session.mouse.trackingModes.size > 0,
+          protocol: session.mouse.protocol,
+        },
       })),
     };
   }
@@ -350,6 +391,12 @@ function spawnSpec(command: string, args: string[], defaultShell?: string): { co
 function platformDefaultShell(): string {
   if (process.platform === 'win32') return 'powershell.exe';
   return process.env.SHELL || 'bash';
+}
+
+function windowsPtyOptions(): pty.IWindowsPtyForkOptions | object {
+  if (process.platform !== 'win32') return {};
+  const backend = (process.env.AGENTIC_TUI_WINDOWS_PTY ?? 'winpty').toLowerCase();
+  return { useConpty: backend === 'conpty' };
 }
 
 function isWindowsShell(command: string): boolean {

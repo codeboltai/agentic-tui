@@ -14,7 +14,7 @@ Drive terminal applications through an observe/act loop:
 
 1. Run the app in a persistent PTY session.
 2. Observe output or rendered screen state.
-3. Send keyboard/text input.
+3. Send keyboard, text, or terminal mouse-wheel input.
 4. Wait for text or stability.
 5. Repeat until complete.
 6. Clean up the session.
@@ -28,6 +28,7 @@ Drive terminal applications through an observe/act loop:
   - PowerShell Core: `agentic-tui daemon start --shell pwsh`
   - Windows cmd: `agentic-tui daemon start --shell cmd.exe`
   - Unix shell: `agentic-tui daemon start --shell bash`
+- On Windows, the default PTY backend is `winpty` because it passes raw terminal input sequences more reliably for TUI automation. Set `AGENTIC_TUI_WINDOWS_PTY=conpty` only when you specifically need ConPTY behavior.
 - If state directory access is restricted, set `AGENTIC_TUI_STATE_DIR` to a writable directory.
 
 ## Core Workflow
@@ -37,6 +38,7 @@ agentic-tui daemon start --shell powershell.exe
 agentic-tui run <command> [...args]
 agentic-tui screen
 agentic-tui press Enter
+agentic-tui wheel down 3
 agentic-tui wait --stable
 agentic-tui screen
 agentic-tui kill
@@ -83,10 +85,21 @@ Navigate:
 ```bash
 agentic-tui press ArrowDown ArrowDown Enter
 agentic-tui scroll down 5
+agentic-tui wheel down 3
+agentic-tui scroll down 3 --row 12 --col 40
+agentic-tui scroll down 3 --keys
 agentic-tui press Tab
 agentic-tui press Escape
 agentic-tui press Ctrl+C
 ```
+
+Scrolling guidance:
+
+- Use `scroll up|down|left|right [amount]` for terminal mouse-wheel events.
+- `wheel up|down|left|right [amount]` is an explicit alias for the same wheel-event path.
+- Use `scroll --keys` only when the app expects repeated arrow keys rather than wheel input.
+- Add `--row N --col N` when the app scrolls only under the pointer or has multiple panes.
+- Use `--protocol sgr` only when auto detection fails; modern TUIs usually request SGR mouse mode automatically.
 
 Resize:
 

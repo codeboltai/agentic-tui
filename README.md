@@ -87,6 +87,7 @@ agentic-tui output --mode screen --out screen.json --format json
 agentic-tui type "hello world"
 agentic-tui press Enter
 agentic-tui press ArrowDown ArrowDown Enter
+agentic-tui wheel down 3
 
 # Wait for a condition.
 agentic-tui wait "Done" --timeout 30000
@@ -110,7 +111,7 @@ agentic-tui sessions list --json
 1. Start the daemon with the shell you want.
 2. Run the target app or command.
 3. Observe with `screen`, `output --mode streaming`, or `search`.
-4. Act with `type`, `press`, `scroll`, or `resize`.
+4. Act with `type`, `press`, `scroll`, `wheel`, or `resize`.
 5. Synchronize with `wait`, usually `wait --stable` after actions that redraw the UI.
 6. Repeat observe/act until the task is complete.
 7. End with `kill` or `daemon stop`.
@@ -353,13 +354,14 @@ agentic-tui press Enter
 
 ### `scroll`
 
-Convenience wrapper over repeated arrow-key presses.
+Send terminal mouse-wheel events. Use this for TUIs that listen for real xterm mouse-wheel input.
 
 ```bash
-agentic-tui scroll up [amount]
-agentic-tui scroll down [amount]
-agentic-tui scroll left [amount]
-agentic-tui scroll right [amount]
+agentic-tui scroll up [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+agentic-tui scroll down [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+agentic-tui scroll left [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+agentic-tui scroll right [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+agentic-tui scroll down [amount] --keys
 ```
 
 Examples:
@@ -368,9 +370,45 @@ Examples:
 agentic-tui scroll down
 agentic-tui scroll down 5
 agentic-tui scroll up 3
+agentic-tui scroll down 3 --row 12 --col 40
+agentic-tui scroll down 3 --keys
 ```
 
-This is intentionally app-agnostic. It sends arrow keys; it does not know app-specific scrolling semantics.
+By default, `scroll` sends wheel events using the same implementation as `wheel`. Add `--keys` only when you intentionally want repeated arrow-key presses instead of mouse-wheel input.
+
+### `wheel`
+
+Send terminal mouse-wheel events to apps that enabled mouse tracking.
+
+```bash
+agentic-tui wheel up [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+agentic-tui wheel down [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+agentic-tui wheel left [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+agentic-tui wheel right [amount] [--row N] [--col N] [--protocol auto|sgr|normal|urxvt]
+```
+
+Examples:
+
+```bash
+agentic-tui wheel down
+agentic-tui wheel down 5
+agentic-tui wheel up 2 --row 10 --col 30
+agentic-tui wheel down 3 --protocol sgr
+```
+
+Defaults:
+
+| Option | Description |
+| --- | --- |
+| `amount` | Number of wheel events to send. Defaults to `1`. |
+| `--row N` | 1-based terminal row for the event. Defaults to the vertical center. |
+| `--col N` | 1-based terminal column for the event. Defaults to the horizontal center. |
+| `--protocol auto` | Use the protocol requested by the app when detected. Falls back to SGR. |
+| `--protocol sgr` | Force SGR mouse encoding, e.g. `CSI < 65 ; col ; row M`. Most modern TUIs use this after enabling `1006` mode. |
+| `--protocol normal` | Force legacy X10/normal mouse encoding. Useful for older curses apps. |
+| `--protocol urxvt` | Force urxvt extended coordinate encoding. |
+
+The daemon watches app output for terminal mode changes such as `?1000h`, `?1002h`, `?1003h`, `?1006h`, and `?1015h`. In `auto` mode this lets it choose SGR, urxvt, or legacy normal encoding to match what the app requested when the PTY exposes those mode changes. If mouse tracking is not detected, `wheel` still sends an SGR wheel event because the command is explicit and SGR is the most reliable cross-platform terminal mouse encoding.
 
 ### `resize`
 
@@ -517,6 +555,7 @@ agentic-tui --session <id> kill
 | --- | --- |
 | `AGENTIC_TUI_STATE_DIR` | Override where daemon state, session metadata, and active session files are stored. |
 | `AGENTIC_TUI_SHELL` | Default shell used for shell-evaluated commands if daemon was not started with `--shell`. |
+| `AGENTIC_TUI_WINDOWS_PTY` | Windows PTY backend: `winpty` or `conpty`. Defaults to `winpty` because it passes raw terminal input sequences more reliably for TUI automation and mouse-wheel events. |
 
 Default state directory:
 
